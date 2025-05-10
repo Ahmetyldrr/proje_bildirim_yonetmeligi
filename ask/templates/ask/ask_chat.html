@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <title>ChatGPT Benzeri Sohbet</title>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; display: flex; height: 100vh; background: #f0f2f5; }
+    .sidebar { width: 250px; background: #fff; border-right: 1px solid #ddd; padding: 20px; overflow-y: auto; }
+    .chat-link { margin: 8px 0; padding: 8px; background: #f1f1f1; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
+    .chat-link a { text-decoration: none; color: black; flex-grow: 1; }
+    .main { flex: 1; display: flex; flex-direction: column; }
+    .chat-container { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; }
+    .message { padding: 10px 15px; margin: 10px 0; border-radius: 8px; max-width: 70%; white-space: pre-wrap; line-height: 1.5; }
+    .user { background: #d1f5d3; align-self: flex-end; }
+    .bot { background: #ffffff; align-self: flex-start; border: 1px solid #ccc; }
+    .chat-form { display: flex; padding: 15px 20px; background: white; border-top: 1px solid #ccc; }
+    .chat-form input { flex: 1; padding: 10px; font-size: 16px; border: 1px solid #ccc; border-radius: 4px; }
+    .chat-form button { padding: 10px 20px; margin-left: 10px; background: #0d6efd; color: white; border: none; font-size: 16px; border-radius: 6px; cursor: pointer; }
+    .auth-bar { margin-bottom: 15px; font-size: 14px; }
+    .auth-bar a { text-decoration: none; margin-right: 10px; color: #0d6efd; }
+    .alert { background-color: #f8d7da; color: #842029; padding: 10px; border-radius: 6px; margin-bottom: 15px; }
+    .delete-button { background: none; border: none; color: red; cursor: pointer; font-size: 16px; }
+  </style>
+</head>
+<body>
+
+<!-- ✅ Sol Menü -->
+<div class="sidebar">
+
+  <!-- Yeni Chat Butonu -->
+  <form method="get" action="{% url 'start_chat' %}">
+    <button type="submit" class="chat-link" style="background:#198754; color:white;">+ Yeni Chat</button>
+  </form>
+
+  <!-- Giriş-Çıkış -->
+  <div class="auth-bar">
+    {% if user.is_authenticated %}
+      Merhaba, {{ user.username }} | <a href="{% url 'account_logout' %}">Çıkış yap</a>
+    {% else %}
+      <a href="{% url 'account_login' %}">🔑 Giriş yap (Google)</a>
+    {% endif %}
+  </div>
+
+  <!-- Sohbetler -->
+  <h2>Sohbetler</h2>
+  {% for s in sessions %}
+    {% if s.title %}
+      <div class="chat-link">
+        <a href="{% url 'chat' s.id %}">{{ s.title }}</a>
+        {% if s.user == request.user %}
+          <form method="post" action="{% url 'delete_chat' s.id %}" style="margin: 0;">
+            {% csrf_token %}
+            <button type="submit" class="delete-button" onclick="return confirm('Bu sohbeti silmek istediğinize emin misiniz?')">🗑️</button>
+          </form>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% endfor %}
+</div>
+
+<!-- ✅ Ana Chat Alanı -->
+<div class="main">
+
+  <div class="chat-container">
+    {% if error_message %}
+      <div class="alert">{{ error_message }}</div>
+    {% endif %}
+
+    {% if selected_session %}
+      {% for msg in messages %}
+        <div class="message user">Sen: {{ msg.question }}</div>
+        <div class="message bot">Asistan: {{ msg.answer|safe }}</div>
+      {% endfor %}
+    {% else %}
+      <div style="color:#888; padding:20px;">Sohbet seçilmedi. Yeni bir soru yazarak sohbet başlatabilirsiniz.</div>
+    {% endif %}
+  </div>
+
+  <!-- ✅ Soru Gönderme -->
+  <form method="post" class="chat-form" id="chat-form">
+    {% csrf_token %}
+    <input type="text" name="question" id="question-input" placeholder="Bir soru yazın..." required autofocus>
+    <button type="submit">Gönder</button>
+  </form>
+
+</div>
+
+<!-- ✅ Anında Gösterim Scripti -->
+<script>
+  const form = document.getElementById("chat-form");
+  const input = document.getElementById("question-input");
+  const chatBox = document.querySelector(".chat-container");
+
+  form.addEventListener("submit", function () {
+    const questionText = input.value.trim();
+    if (!questionText) return;
+
+    // Hemen kullanıcı mesajını göster
+    const userDiv = document.createElement("div");
+    userDiv.className = "message user";
+    userDiv.innerText = "Sen: " + questionText;
+    chatBox.appendChild(userDiv);
+
+    // Bot yazıyor ifadesi
+    const botDiv = document.createElement("div");
+    botDiv.className = "message bot";
+    botDiv.innerText = "Asistan yazıyor...";
+    chatBox.appendChild(botDiv);
+
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    // Input temizliği
+    setTimeout(() => {
+      input.value = "";
+    }, 100);
+  });
+</script>
+
+</body>
+</html>
