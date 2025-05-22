@@ -2,7 +2,7 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
-  <title>ChatGPT Benzeri Sohbet</title>
+  <title>MevzuatİO</title>
   <style>
     body { margin: 0; font-family: Arial, sans-serif; display: flex; height: 100vh; background: #f0f2f5; }
     .sidebar { width: 250px; background: #fff; border-right: 1px solid #ddd; padding: 20px; overflow-y: auto; }
@@ -37,25 +37,24 @@
     {% if user.is_authenticated %}
       Merhaba, {{ user.username }} | <a href="{% url 'account_logout' %}">Çıkış yap</a>
     {% else %}
-      <a href="{% url 'account_login' %}">🔑 Giriş yap (Google)</a>
+      <a href="{% url 'account_login' %}">🔑 Giriş yap </a>
     {% endif %}
   </div>
 
   <!-- Sohbetler -->
   <h2>Sohbetler</h2>
-  {% for s in sessions %}
-    {% if s.title %}
-      <div class="chat-link">
-        <a href="{% url 'chat' s.id %}">{{ s.title }}</a>
-        {% if s.user == request.user %}
-          <form method="post" action="{% url 'delete_chat' s.id %}" style="margin: 0;">
-            {% csrf_token %}
-            <button type="submit" class="delete-button" onclick="return confirm('Bu sohbeti silmek istediğinize emin misiniz?')">🗑️</button>
-          </form>
-        {% endif %}
-      </div>
+{% for s in sessions %}
+  <div class="chat-link">
+    <a href="{% url 'chat' s.slug %}">{{ s.title|default:"Yeni Sohbet" }}</a>
+    {% if s.user == request.user %}
+      <form method="post" action="{% url 'delete_chat' s.slug %}" style="margin: 0;">
+        {% csrf_token %}
+        <button type="submit" class="delete-button" onclick="return confirm('Bu sohbeti silmek istediğinize emin misiniz?')">🗑️</button>
+      </form>
     {% endif %}
-  {% endfor %}
+  </div>
+{% endfor %}
+
 </div>
 
 <!-- ✅ Ana Chat Alanı -->
@@ -113,6 +112,13 @@
     setTimeout(() => {
       input.value = "";
     }, 100);
+  })
+
+   window.addEventListener("load", function () {
+    const chatContainer = document.querySelector(".chat-container");
+    if (chatContainer) {
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
   });
 </script>
 

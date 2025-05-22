@@ -1,26 +1,34 @@
+import re
+import uuid
+import requests
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseForbidden
 from .models import ChatSession, ChatMessage
-import requests
-import re
-
 
 def format_answer(text):
-    """
-    Madde başlıklarını bold yapar, numaralı madde haline getirir ve HTML'e çevirir.
-    """
-    
-    return text
+    """Yanıt içeriğini HTML olarak biçimlendirir."""
+    lines = text.strip().split("\n")
+    if not lines:
+        return text
 
-def chat_view(request, session_id=None):
-    session = None
-    if session_id:
-        try:
-            session = ChatSession.objects.get(id=session_id)
-        except ChatSession.DoesNotExist:
-            session = None
+    intro = lines[0]
+    items = lines[1:]
+    formatted = []
 
+    for line in items:
+        match = re.match(r"^\s*(\d+)\.\s*(.+?):\s*(.+)", line)
+        if match:
+            _, title, desc = match.groups()
+            formatted.append(f"<li><strong>{title}</strong>: {desc}</li>")
+        else:
+            formatted.append(f"<li>{line.strip()}</li>")
+
+    return f"<p>{intro}</p><ol>{''.join(formatted)}</ol>"
+
+# 👇 Ana sohbet görünümü
+def chat_view(request, slug=None):
+    session = get_object_or_404(ChatSession, slug=slug) if slug else None
     new_question = ""
     new_answer = ""
     error_message = None
@@ -28,6 +36,7 @@ def chat_view(request, session_id=None):
     if request.method == "POST":
         question = request.POST.get("question", "").strip()
 
+        # Girişsiz kullanıcılar için mesaj sınırı
         if not request.user.is_authenticated:
             anon_key = "anon_msg_count"
             msg_count = request.session.get(anon_key, 0)
@@ -37,32 +46,30 @@ def chat_view(request, session_id=None):
                 request.session[anon_key] = msg_count + 1
 
         if question and not error_message:
-            # ❗ İlk kez soru geliyorsa, session yoksa burada oluşturulur
+            # İlk soruda sohbet başlat
             if not session:
                 session = ChatSession.objects.create(
                     user=request.user if request.user.is_authenticated else None,
-                    title=question[:60]
+                    title=question[:60],
+                    slug=uuid.uuid4()
                 )
-                return redirect("chat", session_id=session.id)
+                return redirect("chat", slug=session.slug)
 
             try:
                 response = requests.post("http://164.92.241.80:8000/ask", json={"question": question}, timeout=10)
                 answer = response.json().get("answer", "Cevap alınamadı.")
-                
                 formatted_answer = format_answer(answer)
-                ChatMessage.objects.create(
-                    session=session,
-                    question=question,
-                    answer=formatted_answer
-)
-
             except Exception as e:
                 formatted_answer = str(e)
 
             ChatMessage.objects.create(session=session, question=question, answer=formatted_answer)
-            new_question = question
-            new_answer = formatted_answer
-            return redirect("chat", session_id=session.id)
+
+            # Başlığı güncelle (ilk soruda başlıksız oluşturulmuşsa)
+            if session.messages.count() == 1 and session.title == "(Yeni Sohbet)":
+                session.title = question[:60]
+                session.save()
+
+            return redirect("chat", slug=session.slug)
 
     sessions = ChatSession.objects.filter(user=request.user) if request.user.is_authenticated else ChatSession.objects.filter(user__isnull=True)
     sessions = sessions.order_by("-created_at")
@@ -77,30 +84,13 @@ def chat_view(request, session_id=None):
         "error_message": error_message,
     })
 
-
-
-@login_required
-def delete_chat(request, session_id):
-    session = get_object_or_404(ChatSession, id=session_id)
-    if session.user != request.user:
-        return HttpResponseForbidden("Bu sohbete erişim izniniz yok.")
-    session.delete()
-    return redirect("index")
-
-
-from django.shortcuts import redirect
-
+# 👇 Giriş ekranı gibi davranan yönlendirme
 def home_chat_view(request):
-    # Kullanıcıya özel veya anonim sohbetler
     sessions = ChatSession.objects.filter(user=request.user) if request.user.is_authenticated else ChatSession.objects.filter(user__isnull=True)
     sessions = sessions.order_by("-created_at")
-
-    # Eğer en az 1 sohbet varsa, en sonuncusuna yönlendir
     if sessions.exists():
-        latest_session = sessions.first()
-        return redirect("chat", session_id=latest_session.id)
+        return redirect("chat", slug=sessions.first().slug)
 
-    # Hiç sohbet yoksa sayfayı boş aç
     return render(request, "ask/ask_chat.html", {
         "sessions": sessions,
         "selected_session": None,
@@ -110,11 +100,20 @@ def home_chat_view(request):
         "error_message": ""
     })
 
-
+# 👇 Yeni sohbet başlat
 def start_chat(request):
-    # Yeni session oluştur
     session = ChatSession.objects.create(
         user=request.user if request.user.is_authenticated else None,
-        title="(Yeni Sohbet)"
+        title="(Yeni Sohbet)",
+        slug=uuid.uuid4()
     )
-    return redirect("chat", session_id=session.id)
+    return redirect("chat", slug=session.slug)
+
+# 👇 Silme işlemi
+@login_required
+def delete_chat(request, slug):
+    session = get_object_or_404(ChatSession, slug=slug)
+    if session.user != request.user:
+        return HttpResponseForbidden("Bu sohbete erişim izniniz yok.")
+    session.delete()
+    return redirect("index")
